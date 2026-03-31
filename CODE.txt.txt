@@ -1,0 +1,131 @@
+char auth[] = "Your_Auth_Token";
+char ssid[] = "Your_WiFi_Name";
+char pass[] = "Your_WiFi_Password";
+
+// Ultrasonic Sensor Pins
+#define trig D5
+#define echo D6
+
+// Flow Sensor
+#define flowSensor D7
+
+// Output Devices
+#define buzzer D8
+
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27,16,2);
+
+long duration;
+int distance;
+volatile int pulseCount = 0;
+float flowRate = 0;
+
+unsigned long previousMillis = 0;
+
+// Interrupt function for flow sensor
+void ICACHE_RAM_ATTR pulseCounter() 
+{
+  pulseCount++;
+}
+
+void setup()
+{
+  Serial.begin(9600);
+
+  pinMode(trig, OUTPUT);
+  pinMode(echo, INPUT);
+  pinMode(flowSensor, INPUT);
+  pinMode(buzzer, OUTPUT);
+
+  digitalWrite(buzzer, LOW);
+
+  attachInterrupt(digitalPinToInterrupt(flowSensor), pulseCounter, FALLING);
+
+  lcd.init();
+  lcd.backlight();
+
+  lcd.print("CONNECTING...");
+  WiFi.begin(ssid, pass);
+
+  while(WiFi.status() != WL_CONNECTED)
+  {
+    delay(1000);
+    Serial.println("Connecting...");
+  }
+
+  lcd.clear();
+  lcd.print("WIFI CONNECTED");
+
+  Blynk.config(auth);
+}
+
+// Function to measure distance
+int getDistance()
+{
+  digitalWrite(trig, LOW);
+  delayMicroseconds(2);
+
+  digitalWrite(trig, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig, LOW);
+
+  duration = pulseIn(echo, HIGH);
+  distance = duration * 0.034 / 2;
+
+  return distance;
+}
+
+void loop()
+{
+  Blynk.run();
+
+  int dist = getDistance();
+
+  // Flow rate calculation
+  if (millis() - previousMillis > 1000)
+  {
+    flowRate = pulseCount * 2.25; // approx conversion
+    pulseCount = 0;
+    previousMillis = millis();
+  }
+
+  Serial.print("Distance: ");
+  Serial.println(dist);
+  Serial.print("Flow Rate: ");
+  Serial.println(flowRate);
+
+  String status = "NORMAL";
+
+  // Flood condition
+  if(dist <= 10 || flowRate >= 20)
+  {
+    digitalWrite(buzzer, HIGH);
+    status = "ALERT";
+
+    Blynk.logEvent("flood_alert");
+  }
+  else
+  {
+    digitalWrite(buzzer, LOW);
+  }
+
+  // LCD Display
+  lcd.clear();
+  lcd.print("D:");
+  lcd.print(dist);
+  lcd.print("cm ");
+
+  lcd.setCursor(0,1);
+  lcd.print("F:");
+  lcd.print(flowRate);
+  lcd.print(" ");
+  lcd.print(status);
+
+  delay(500);
+}
+
+
+
+
+
+
